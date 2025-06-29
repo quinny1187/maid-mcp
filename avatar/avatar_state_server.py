@@ -63,26 +63,29 @@ def health_check():
     """Health check endpoint"""
     return jsonify({'status': 'running'})
 
-@app.route('/animate', methods=['POST'])
-def start_animation():
-    """Start an animation sequence"""
+@app.route('/play_animation', methods=['POST'])
+def play_animation():
+    """Play an animation with clean logging"""
     global avatar_state
     
     data = request.get_json()
     if data:
         # Store animation data with current time
         avatar_state['animation'] = {
-            'sequence': data.get('sequence', []),
+            'id': data.get('id'),
+            'name': data.get('name'),
+            'sequence': data.get('frames', []),
             'fps': data.get('fps', 2),
             'loop': data.get('loop', False),
             'current_frame': 0,
-            'start_time': time.time()  # Set start time immediately
+            'start_time': time.time()
         }
         
         # Make avatar visible when animation starts
         avatar_state['visible'] = True
         
-        print(f"Started animation: {data.get('sequence')} at {data.get('fps')} FPS")
+        # Clean log - just the animation name
+        print(f"Playing animation: {data.get('name', data.get('id'))}")
     
     return jsonify({'status': 'ok'})
 
@@ -104,6 +107,6 @@ if __name__ == '__main__':
     print("  GET  /state - Get current state")
     print("  POST /state - Update state")
     print("  GET  /health - Health check")
-    print("  POST /animate - Start animation")
+    print("  POST /play_animation - Play animation")
     print("  DELETE /animate - Stop animation")
     app.run(host='0.0.0.0', port=3338, debug=False)

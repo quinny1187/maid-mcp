@@ -19,6 +19,7 @@ class AvatarWindow(QWidget):
         super().__init__()
         self.state_url = "http://localhost:3338"
         self.current_pose = "idle"
+        self.current_animation_id = None  # Track current animation
         self.sprites = {}
         self.dragging = False
         self.drag_position = QPoint()
@@ -82,12 +83,16 @@ class AvatarWindow(QWidget):
         # Set initial sprite
         self.set_sprite("idle")
         
-    def set_sprite(self, pose_name):
+    def set_sprite(self, pose_name, animation_id=None):
         """Change the displayed sprite"""
         if pose_name in self.sprites:
             self.sprite_label.setPixmap(self.sprites[pose_name])
             self.current_pose = pose_name
-            print(f"Set sprite to: {pose_name}")
+            
+            # Only log if animation changed
+            if animation_id and animation_id != self.current_animation_id:
+                self.current_animation_id = animation_id
+                print(f"Animation changed to: {animation_id}")
         else:
             print(f"Sprite not found: {pose_name}")
             
@@ -140,14 +145,15 @@ class AvatarWindow(QWidget):
                         current_frame_index = frame_number % total_frames
                         pose = sequence[current_frame_index]
                         if pose != self.current_pose:
-                            self.set_sprite(pose)
+                            self.set_sprite(pose, animation.get('id'))
                     elif frame_number < total_frames:
                         # For non-looping, show frame if within range
                         pose = sequence[frame_number]
                         if pose != self.current_pose:
-                            self.set_sprite(pose)
+                            self.set_sprite(pose, animation.get('id'))
                     else:
-                        # Non-looping animation finished, clear it and return to idle
+                        # Non-looping animation finished
+                        print(f"Animation complete: {animation.get('id', 'unknown')}")
                         requests.post(f"{self.state_url}/state", 
                                     json={'animation': None, 'pose': 'idle'},
                                     timeout=0.1)
@@ -221,7 +227,8 @@ class AvatarWindow(QWidget):
                                 json={'pose': 'idle', 'animation': None},
                                 timeout=0.1)
                     self.set_sprite('idle')
-                    print("Left-click: Animation cancelled, returning to idle")
+                    self.current_animation_id = None
+                    print("Left-click: Animation cancelled")
                 except:
                     pass
             elif self.dragging:

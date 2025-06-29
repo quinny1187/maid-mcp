@@ -3,7 +3,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
-import { mkdir, writeFile, unlink, rmdir } from 'fs/promises';
+import { mkdir, writeFile, unlink, rmdir, readFile, appendFile, readdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { exec } from 'child_process';
@@ -30,6 +30,64 @@ const EMOTIONS = {
   angry: { pitch: '-10Hz', rate: '+5%', volume: '+5%' },
   shy: { pitch: '+5Hz', rate: '-5%', volume: '-20%' }
 };
+
+// Animation storage
+class AnimationManager {
+  constructor() {
+    this.animationsFile = join(process.cwd(), 'avatar', 'library', 'animations', 'animations.jsonl');
+    this.animationsDir = join(process.cwd(), 'avatar', 'library', 'animations');
+    this.animations = new Map();
+  }
+  
+  async ensureDirectory() {
+    if (!existsSync(this.animationsDir)) {
+      await mkdir(this.animationsDir, { recursive: true });
+    }
+  }
+  
+  async loadAnimations() {
+    try {
+      await this.ensureDirectory();
+      
+      if (existsSync(this.animationsFile)) {
+        const content = await readFile(this.animationsFile, 'utf-8');
+        const lines = content.split('\n').filter(line => line.trim());
+        
+        for (const line of lines) {
+          try {
+            const animation = JSON.parse(line);
+            this.animations.set(animation.id, animation);
+          } catch (e) {
+            console.error('Failed to parse animation line:', line);
+          }
+        }
+      }
+      console.error(`Loaded ${this.animations.size} animations`);
+    } catch (error) {
+      console.error('Failed to load animations:', error);
+    }
+  }
+  
+  async saveAnimation(animation) {
+    // Ensure directory exists
+    await this.ensureDirectory();
+    
+    // Add to memory
+    this.animations.set(animation.id, animation);
+    
+    // Append to file
+    const line = JSON.stringify(animation) + '\n';
+    await appendFile(this.animationsFile, line);
+  }
+  
+  getAnimation(id) {
+    return this.animations.get(id);
+  }
+  
+  listAnimations() {
+    return Array.from(this.animations.values());
+  }
+}
 
 // Audio Queue System
 class AudioQueue {
@@ -198,8 +256,9 @@ Wend
   }
 }
 
-// Create voice engine instance
+// Create instances
 const voiceEngine = new VoiceEngine();
+const animationManager = new AnimationManager();
 
 // Create MCP server
 const server = new Server(
@@ -266,9 +325,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: {
           type: 'object',
           properties: {
-            pose: {
+            animation: {
               type: 'string',
-              description: 'Initial pose to display (default: idle)',
+              description: 'Initial animation to play (default: idle)',
               default: 'idle'
             },
             x: {
@@ -293,20 +352,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: 'set_avatar_pose',
-        description: 'Change the avatar pose/emotion',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            pose: {
-              type: 'string',
-              description: 'The pose to display (idle, happy, sad, thinking, talking, sleeping, angry, love, pick_up, write)'
-            }
-          },
-          required: ['pose']
-        }
-      },
-      {
         name: 'move_avatar',
         description: 'Move the avatar to a specific position',
         inputSchema: {
@@ -325,22 +370,44 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: 'list_avatar_poses',
-        description: 'List all available avatar poses',
+        name: 'play_animation',
+        description: 'Play an animation (single pose or sequence)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              description: 'Animation ID (e.g. "idle", "happy", "treasure_hunt")'
+            }
+          },
+          required: ['id']
+        }
+      },
+      {
+        name: 'stop_animation',
+        description: 'Stop any running animation',
         inputSchema: {
           type: 'object',
           properties: {}
         }
       },
       {
-        name: 'start_animation',
-        description: 'Start animation sequence with avatar poses',
+        name: 'create_animation',
+        description: 'Create and save a custom animation sequence',
         inputSchema: {
           type: 'object',
           properties: {
-            sequence: {
+            id: {
               type: 'string',
-              description: 'Comma-separated list of poses (e.g. "search_1,search_2,search_3")'
+              description: 'Unique ID for the animation'
+            },
+            name: {
+              type: 'string',
+              description: 'Display name for the animation'
+            },
+            frames: {
+              type: 'string',
+              description: 'Comma-separated list of poses'
             },
             fps: {
               type: 'number',
@@ -349,16 +416,24 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             loop: {
               type: 'boolean',
-              description: 'Whether to loop the animation (default: false)',
+              description: 'Whether to loop (default: false)',
               default: false
             }
           },
-          required: ['sequence']
+          required: ['id', 'name', 'frames']
         }
       },
       {
-        name: 'stop_animation',
-        description: 'Stop any running avatar animation',
+        name: 'list_animations',
+        description: 'List all available animations',
+        inputSchema: {
+          type: 'object',
+          properties: {}
+        }
+      },
+      {
+        name: 'list_poses',
+        description: 'List all available sprite poses (PNG files)',
         inputSchema: {
           type: 'object',
           properties: {}
@@ -417,20 +492,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       
       case 'show_avatar': {
         try {
-          const pose = args.pose || 'idle';
+          const animationId = args.animation || 'idle';
           const x = args.x || 1000;
           const y = args.y || 100;
           
+          // Get the animation
+          const animation = animationManager.getAnimation(animationId);
+          if (!animation) {
+            throw new Error(`Unknown animation: ${animationId}`);
+          }
+          
+          // Show avatar with initial animation
           await axios.post('http://localhost:3338/state', {
             visible: true,
-            pose: pose,
             position: { x, y }
+          });
+          
+          // Play the animation
+          await axios.post('http://localhost:3338/play_animation', {
+            id: animationId,
+            name: animation.name,
+            frames: animation.frames,
+            fps: animation.fps,
+            loop: animation.loop
           });
           
           return {
             content: [{
               type: 'text',
-              text: `Avatar shown at position (${x}, ${y}) with ${pose} pose`
+              text: `Avatar shown at position (${x}, ${y}) playing animation: ${animation.name}`
             }]
           };
         } catch (error) {
@@ -445,14 +535,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       
       case 'hide_avatar': {
         try {
-          // First stop any animation
-          try {
-            await axios.delete('http://localhost:3338/animate');
-          } catch (e) {
-            // Ignore error if no animation was running
-          }
-          
-          // Then hide the avatar
           await axios.post('http://localhost:3338/state', { 
             visible: false
           });
@@ -473,50 +555,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
       
-      case 'set_avatar_pose': {
-        try {
-          // First stop any running animation
-          try {
-            await axios.delete('http://localhost:3338/animate');
-          } catch (e) {
-            // Ignore error if no animation was running
-          }
-          
-          // Then set the pose
-          await axios.post('http://localhost:3338/state', { 
-            pose: args.pose,
-            visible: true  // Auto-show when changing pose
-          });
-          
-          return {
-            content: [{
-              type: 'text',
-              text: `Avatar pose changed to: ${args.pose} (and shown if hidden)`
-            }]
-          };
-        } catch (error) {
-          return {
-            content: [{
-              type: 'text',
-              text: 'Failed to set avatar pose. Make sure avatar system is running.'
-            }]
-          };
-        }
-      }
-      
       case 'move_avatar': {
         try {
-          // When moving, also make sure avatar is visible
-          // Note: We don't clear animation here as moving shouldn't stop animations
           await axios.post('http://localhost:3338/state', {
             position: { x: args.x, y: args.y },
-            visible: true  // Auto-show when moving
+            visible: true
           });
           
           return {
             content: [{
               type: 'text',
-              text: `Avatar moved to position (${args.x}, ${args.y}) (and shown if hidden)`
+              text: `Avatar moved to position (${args.x}, ${args.y})`
             }]
           };
         } catch (error) {
@@ -529,65 +578,50 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
       
-      case 'list_avatar_poses': {
-        const availablePoses = [
-          { name: 'idle', description: 'Standing politely with serving tray, pleasant smile' },
-          { name: 'happy', description: 'Jumping with arms raised, one leg up, very excited' },
-
-          { name: 'thinking', description: 'Hand on chin, contemplative pose' },
-          { name: 'talking', description: 'Hand extended palm-up, explaining something' },
-          { name: 'sleeping', description: 'Eyes closed with Zzz, leaning on broom' },
-          { name: 'anger', description: 'Hands on hips, stern expression, assertive stance' },
-          { name: 'love', description: 'Heart eyes, hands clasped together, adoring expression' },
-          { name: 'pick_up', description: 'Being moved or lifted' },
-          { name: 'write', description: 'Turned away, appears to be writing something' },
-          { name: 'master', description: 'Arms spread wide horizontally, welcoming pose' },
-          { name: 'search_1', description: 'Bending over treasure chest, searching inside' },
-          { name: 'search_2', description: 'Different angle searching in treasure chest' },
-          { name: 'search_3', description: 'Victory pose with golden trophy, sitting on chest' }
-        ];
-        
-        const poseList = availablePoses.map(p => `• ${p.name}: ${p.description}`).join('\n');
-        
-        return {
-          content: [{
-            type: 'text',
-            text: `Available avatar poses:\n\n${poseList}`
-          }]
-        };
-      }
-      
-      case 'start_animation': {
+      case 'play_animation': {
         try {
-          const sequence = args.sequence.split(',').map(s => s.trim());
-          const fps = args.fps || 2;
-          const loop = args.loop || false;
+          let animation = animationManager.getAnimation(args.id);
           
-          // Validate poses exist (basic check)
-          if (sequence.length === 0) {
-            throw new Error('Animation sequence cannot be empty');
+          // If animation doesn't exist, check if it's a valid pose
+          if (!animation) {
+            const libraryPath = join(process.cwd(), 'avatar', 'library');
+            const files = await readdir(libraryPath);
+            const poseExists = files.includes(`${args.id}.png`);
+            
+            if (poseExists) {
+              // Create a temporary single-frame animation
+              animation = {
+                id: args.id,
+                name: args.id.charAt(0).toUpperCase() + args.id.slice(1),
+                frames: [args.id],
+                fps: 1,
+                loop: false
+              };
+            } else {
+              throw new Error(`Unknown animation or pose: ${args.id}`);
+            }
           }
           
-          // Send animation request to avatar server
-          await axios.post('http://localhost:3338/animate', {
-            sequence: sequence,
-            fps: fps,
-            loop: loop
+          // Send animation to avatar server
+          await axios.post('http://localhost:3338/play_animation', {
+            id: animation.id,
+            name: animation.name,
+            frames: animation.frames,
+            fps: animation.fps,
+            loop: animation.loop
           });
-          
-          const duration = sequence.length / fps;
           
           return {
             content: [{
               type: 'text',
-              text: `Started animation: ${sequence.join(' → ')} at ${fps} FPS${loop ? ' (looping)' : ''}`
+              text: `Playing animation: ${animation.name}${animation.loop ? ' (looping)' : ''}`
             }]
           };
         } catch (error) {
           return {
             content: [{
               type: 'text',
-              text: `Failed to start animation. Make sure avatar system is running. Error: ${error.message}`
+              text: `Failed to play animation: ${error.message}`
             }]
           };
         }
@@ -595,7 +629,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       
       case 'stop_animation': {
         try {
-          // Send DELETE request to stop animation
           await axios.delete('http://localhost:3338/animate');
           
           return {
@@ -609,6 +642,113 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             content: [{
               type: 'text',
               text: 'Failed to stop animation. Make sure avatar system is running.'
+            }]
+          };
+        }
+      }
+      
+      case 'create_animation': {
+        try {
+          // Parse frames
+          const frames = args.frames.split(',').map(f => f.trim());
+          if (frames.length === 0) {
+            throw new Error('Animation must have at least one frame');
+          }
+          
+          // Create animation object
+          const animation = {
+            id: args.id,
+            name: args.name,
+            frames: frames,
+            fps: args.fps || 2,
+            loop: args.loop || false,
+            builtin: false
+          };
+          
+          // Save it
+          await animationManager.saveAnimation(animation);
+          
+          return {
+            content: [{
+              type: 'text',
+              text: `Created animation: "${animation.name}" (${frames.length} frames at ${animation.fps} FPS)\nID: ${animation.id}`
+            }]
+          };
+        } catch (error) {
+          return {
+            content: [{
+              type: 'text',
+              text: `Failed to save animation: ${error.message}`
+            }]
+          };
+        }
+      }
+      
+      case 'list_animations': {
+        const animations = animationManager.listAnimations();
+        const categorized = {
+          poses: animations.filter(a => a.builtin && a.frames.length === 1),
+          sequences: animations.filter(a => a.builtin && a.frames.length > 1),
+          custom: animations.filter(a => !a.builtin)
+        };
+        
+        let output = "Available Animations:\n\n";
+        
+        if (categorized.poses.length > 0) {
+          output += "📷 Single Poses:\n";
+          categorized.poses.forEach(a => {
+            output += `  • ${a.id} - ${a.name}\n`;
+          });
+          output += "\n";
+        }
+        
+        if (categorized.sequences.length > 0) {
+          output += "🎬 Built-in Sequences:\n";
+          categorized.sequences.forEach(a => {
+            output += `  • ${a.id} - ${a.name} (${a.frames.length} frames, ${a.fps} FPS${a.loop ? ', loops' : ''})\n`;
+          });
+          output += "\n";
+        }
+        
+        if (categorized.custom.length > 0) {
+          output += "⭐ Custom Animations:\n";
+          categorized.custom.forEach(a => {
+            output += `  • ${a.id} - ${a.name} (${a.frames.length} frames, ${a.fps} FPS${a.loop ? ', loops' : ''})\n`;
+          });
+        }
+        
+        return {
+          content: [{
+            type: 'text',
+            text: output
+          }]
+        };
+      }
+      
+      case 'list_poses': {
+        try {
+          const libraryPath = join(process.cwd(), 'avatar', 'library');
+          const files = await readdir(libraryPath);
+          const pngFiles = files.filter(f => f.endsWith('.png'));
+          const poses = pngFiles.map(f => f.replace('.png', '')).sort();
+          
+          let output = "Available Sprite Poses:\n\n";
+          poses.forEach(pose => {
+            output += `  • ${pose}\n`;
+          });
+          output += `\nTotal: ${poses.length} poses`;
+          
+          return {
+            content: [{
+              type: 'text',
+              text: output
+          }]
+        };
+        } catch (error) {
+          return {
+            content: [{
+              type: 'text',
+              text: `Failed to list poses: ${error.message}`
             }]
           };
         }
@@ -632,12 +772,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   try {
     await voiceEngine.initialize();
+    await animationManager.loadAnimations();
     
     const transport = new StdioServerTransport();
     await server.connect(transport);
     
-    console.error('maid-mcp server running - Voice with audio queue system ready!');
-    console.error('Audio files are queued and played sequentially to avoid conflicts.');
+    console.error('maid-mcp server running - Voice and animation system ready!');
+    console.error(`Loaded ${animationManager.animations.size} animations`);
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);
