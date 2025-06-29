@@ -1,0 +1,3 @@
+@echo off
+echo Starting maid-mcp server...
+node maid-server.js
