@@ -1,12 +1,13 @@
-// maid-mcp server - Voice synthesis with VBScript hidden audio playback
+// maid-mcp server - Voice synthesis with audio queue system
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
-import { mkdir, writeFile, unlink } from 'fs/promises';
+import { mkdir, writeFile, unlink, rmdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { exec } from 'child_process';
+import axios from 'axios';
 
 // Voice configuration with Japanese accent settings
 const VOICES = {
@@ -30,13 +31,67 @@ const EMOTIONS = {
   shy: { pitch: '+5Hz', rate: '-5%', volume: '-20%' }
 };
 
-// TTS Engine wrapper
+// Audio Queue System
+class AudioQueue {
+  constructor() {
+    this.queue = [];
+    this.isPlaying = false;
+  }
+  
+  add(audioPath, vbsPath, audioDir) {
+    this.queue.push({ audioPath, vbsPath, audioDir });
+    if (!this.isPlaying) {
+      this.processQueue();
+    }
+  }
+  
+  async processQueue() {
+    if (this.queue.length === 0) {
+      this.isPlaying = false;
+      return;
+    }
+    
+    this.isPlaying = true;
+    const { audioPath, vbsPath, audioDir } = this.queue.shift();
+    
+    // Execute VBScript and wait for completion
+    exec(`wscript //B "${vbsPath}"`, {
+      windowsHide: true
+    }, async (error) => {
+      if (error) {
+        console.error('Audio playback error:', error.message);
+      }
+      
+      // Clean up files after playback
+      setTimeout(async () => {
+        try {
+          await unlink(vbsPath);
+          await unlink(audioPath);
+          // Remove the audio directory
+          if (audioDir) {
+            await rmdir(audioDir);
+          }
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }, 1000);
+      
+      // Process next item in queue
+      setTimeout(() => {
+        this.processQueue();
+      }, 500); // Small gap between audio clips
+    });
+  }
+}
+
+// TTS Engine wrapper with queue
 class VoiceEngine {
   constructor() {
     this.tts = new MsEdgeTTS();
     // Default to Japanese voice for Japanese accent
     this.currentVoice = 'ja-JP-NanamiNeural';
     this.tempDir = join(process.cwd(), 'temp_voice');
+    this.audioQueue = new AudioQueue();
   }
   
   async initialize() {
@@ -67,9 +122,18 @@ class VoiceEngine {
       const emotionPitch = parseInt(emotionSettings.pitch);
       const combinedPitch = `+${basePitch + emotionPitch}Hz`;
       
-      // Generate audio with combined settings
+      // Generate unique filename for this audio
+      const timestamp = Date.now();
+      const randomSuffix = Math.random().toString(36).substring(7);
+      const uniqueId = `${timestamp}_${randomSuffix}`;
+      
+      // Create a subdirectory for this specific audio
+      const audioDir = join(this.tempDir, uniqueId);
+      await mkdir(audioDir, { recursive: true });
+      
+      // Generate audio - msedge-tts will create audio.mp3 in the directory
       const { audioFilePath } = await this.tts.toFile(
-        this.tempDir, 
+        audioDir,
         text,
         {
           rate: emotionSettings.rate,
@@ -90,29 +154,15 @@ While Sound.playState <> 1
 Wend
 `.trim();
       
-      // Write VBScript to temp file
-      const vbsPath = join(this.tempDir, `play_${Date.now()}.vbs`);
+      // Write VBScript to temp file with unique name
+      const vbsPath = join(this.tempDir, `play_${uniqueId}.vbs`);
       await writeFile(vbsPath, vbsScript);
       
-      // Execute VBScript with wscript (completely hidden)
-      exec(`wscript //B "${vbsPath}"`, {
-        windowsHide: true
-      }, async (error) => {
-        if (error) {
-          console.error('Audio playback error:', error.message);
-        }
-        // Clean up VBScript file after a delay
-        setTimeout(async () => {
-          try {
-            await unlink(vbsPath);
-          } catch (e) {
-            // Ignore cleanup errors
-          }
-        }, 5000);
-      });
+      // Add to queue instead of playing immediately
+      this.audioQueue.add(audioFilePath, vbsPath, audioDir);
       
       // Log for debugging
-      console.error(`Playing: ${audioFilePath} with voice ${this.currentVoice} (${emotion} emotion) - using VBScript (no window)`);
+      console.error(`Queued: ${uniqueId}/audio.mp3 with voice ${this.currentVoice} (${emotion} emotion)`);
       
       return { success: true, emotion, voice: this.currentVoice, audioFilePath };
     } catch (error) {
@@ -209,6 +259,78 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           },
           required: ['voiceId']
         }
+      },
+      {
+        name: 'show_avatar',
+        description: 'Show the visual avatar on screen',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            pose: {
+              type: 'string',
+              description: 'Initial pose to display (default: idle)',
+              default: 'idle'
+            },
+            x: {
+              type: 'number',
+              description: 'X position on screen (default: 1000)',
+              default: 1000
+            },
+            y: {
+              type: 'number',
+              description: 'Y position on screen (default: 100)',
+              default: 100
+            }
+          }
+        }
+      },
+      {
+        name: 'hide_avatar',
+        description: 'Hide the visual avatar',
+        inputSchema: {
+          type: 'object',
+          properties: {}
+        }
+      },
+      {
+        name: 'set_avatar_pose',
+        description: 'Change the avatar pose/emotion',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            pose: {
+              type: 'string',
+              description: 'The pose to display (idle, happy, sad, thinking, talking, sleeping, angry, love, pick_up, write)'
+            }
+          },
+          required: ['pose']
+        }
+      },
+      {
+        name: 'move_avatar',
+        description: 'Move the avatar to a specific position',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            x: {
+              type: 'number',
+              description: 'X position on screen'
+            },
+            y: {
+              type: 'number',
+              description: 'Y position on screen'
+            }
+          },
+          required: ['x', 'y']
+        }
+      },
+      {
+        name: 'list_avatar_poses',
+        description: 'List all available avatar poses',
+        inputSchema: {
+          type: 'object',
+          properties: {}
+        }
       }
     ]
   };
@@ -261,6 +383,127 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
       
+      case 'show_avatar': {
+        try {
+          const pose = args.pose || 'idle';
+          const x = args.x || 1000;
+          const y = args.y || 100;
+          
+          await axios.post('http://localhost:3338/state', {
+            visible: true,
+            pose: pose,
+            position: { x, y }
+          });
+          
+          return {
+            content: [{
+              type: 'text',
+              text: `Avatar shown at position (${x}, ${y}) with ${pose} pose`
+            }]
+          };
+        } catch (error) {
+          return {
+            content: [{
+              type: 'text',
+              text: 'Failed to show avatar. Make sure avatar system is running (run avatar/start_avatar.bat)'
+            }]
+          };
+        }
+      }
+      
+      case 'hide_avatar': {
+        try {
+          await axios.post('http://localhost:3338/state', { visible: false });
+          
+          return {
+            content: [{
+              type: 'text',
+              text: 'Avatar hidden'
+            }]
+          };
+        } catch (error) {
+          return {
+            content: [{
+              type: 'text',
+              text: 'Failed to hide avatar. Avatar system may not be running.'
+            }]
+          };
+        }
+      }
+      
+      case 'set_avatar_pose': {
+        try {
+          // When setting a pose, also make sure avatar is visible
+          await axios.post('http://localhost:3338/state', { 
+            pose: args.pose,
+            visible: true  // Auto-show when changing pose
+          });
+          
+          return {
+            content: [{
+              type: 'text',
+              text: `Avatar pose changed to: ${args.pose} (and shown if hidden)`
+            }]
+          };
+        } catch (error) {
+          return {
+            content: [{
+              type: 'text',
+              text: 'Failed to set avatar pose. Make sure avatar system is running.'
+            }]
+          };
+        }
+      }
+      
+      case 'move_avatar': {
+        try {
+          // When moving, also make sure avatar is visible
+          await axios.post('http://localhost:3338/state', {
+            position: { x: args.x, y: args.y },
+            visible: true  // Auto-show when moving
+          });
+          
+          return {
+            content: [{
+              type: 'text',
+              text: `Avatar moved to position (${args.x}, ${args.y}) (and shown if hidden)`
+            }]
+          };
+        } catch (error) {
+          return {
+            content: [{
+              type: 'text',
+              text: 'Failed to move avatar. Make sure avatar system is running.'
+            }]
+          };
+        }
+      }
+      
+      case 'list_avatar_poses': {
+        const availablePoses = [
+          { name: 'idle', description: 'Default relaxed state' },
+          { name: 'happy', description: 'Joyful expression' },
+          { name: 'sad', description: 'Sad or sympathetic' },
+          { name: 'thinking', description: 'Deep in thought' },
+          { name: 'talking', description: 'Speaking or communicating' },
+          { name: 'sleeping', description: 'Sleeping or resting' },
+          { name: 'angry', description: 'Frustrated or upset' },
+          { name: 'love', description: 'Affectionate or caring' },
+          { name: 'pick_up', description: 'Being moved or lifted' },
+          { name: 'write', description: 'Writing or taking notes' },
+          { name: 'master', description: 'Default master pose' }
+        ];
+        
+        const poseList = availablePoses.map(p => `• ${p.name}: ${p.description}`).join('\n');
+        
+        return {
+          content: [{
+            type: 'text',
+            text: `Available avatar poses:\n\n${poseList}`
+          }]
+        };
+      }
+      
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -283,8 +526,8 @@ async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
     
-    console.error('maid-mcp server running - Voice tools ready with Japanese accent support!');
-    console.error('Using VBScript for completely hidden audio playback (no windows!)');
+    console.error('maid-mcp server running - Voice with audio queue system ready!');
+    console.error('Audio files are queued and played sequentially to avoid conflicts.');
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);

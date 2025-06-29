@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.6.0",
-    "msedge-tts": "^2.0.0"
+    "msedge-tts": "^2.0.0",
+    "axios": "^1.6.0"
   },
   "keywords": ["mcp", "maid", "voice", "assistant"],
   "author": "",
