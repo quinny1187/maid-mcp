@@ -7,6 +7,7 @@ Runs on http://localhost:3338
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import logging
+import time
 
 app = Flask(__name__)
 CORS(app)
@@ -20,7 +21,8 @@ avatar_state = {
     'visible': True,
     'pose': 'idle',
     'position': {'x': 1000, 'y': 100},
-    'last_update': None
+    'last_update': None,
+    'animation': None  # Animation data
 }
 
 @app.route('/state', methods=['GET'])
@@ -34,7 +36,14 @@ def update_state():
     global avatar_state
     
     data = request.get_json()
+    print(f"[DEBUG] Received state update: {data}")  # Debug log
+    
     if data:
+        # Handle animation clearing explicitly
+        if 'animation' in data and data['animation'] is None:
+            avatar_state['animation'] = None
+            print("Animation cleared")
+        
         avatar_state.update(data)
         
         # Log state changes
@@ -44,6 +53,8 @@ def update_state():
             print(f"Avatar visibility: {data['visible']}")
         if 'position' in data:
             print(f"Avatar moved to: {data['position']}")
+        if 'animation' in data and data['animation'] is not None:
+            print(f"Animation updated: {data['animation']}")
     
     return jsonify({'status': 'ok'})
 
@@ -52,10 +63,47 @@ def health_check():
     """Health check endpoint"""
     return jsonify({'status': 'running'})
 
+@app.route('/animate', methods=['POST'])
+def start_animation():
+    """Start an animation sequence"""
+    global avatar_state
+    
+    data = request.get_json()
+    if data:
+        # Store animation data with current time
+        avatar_state['animation'] = {
+            'sequence': data.get('sequence', []),
+            'fps': data.get('fps', 2),
+            'loop': data.get('loop', False),
+            'current_frame': 0,
+            'start_time': time.time()  # Set start time immediately
+        }
+        
+        # Make avatar visible when animation starts
+        avatar_state['visible'] = True
+        
+        print(f"Started animation: {data.get('sequence')} at {data.get('fps')} FPS")
+    
+    return jsonify({'status': 'ok'})
+
+@app.route('/animate', methods=['DELETE'])
+def stop_animation():
+    """Stop current animation"""
+    global avatar_state
+    
+    avatar_state['animation'] = None
+    avatar_state['pose'] = 'idle'  # Return to idle
+    
+    print("Animation stopped")
+    
+    return jsonify({'status': 'ok'})
+
 if __name__ == '__main__':
     print("Avatar State Server running on http://localhost:3338")
     print("Endpoints:")
     print("  GET  /state - Get current state")
     print("  POST /state - Update state")
     print("  GET  /health - Health check")
+    print("  POST /animate - Start animation")
+    print("  DELETE /animate - Stop animation")
     app.run(host='0.0.0.0', port=3338, debug=False)

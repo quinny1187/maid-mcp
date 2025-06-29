@@ -331,6 +331,38 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           type: 'object',
           properties: {}
         }
+      },
+      {
+        name: 'start_animation',
+        description: 'Start animation sequence with avatar poses',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sequence: {
+              type: 'string',
+              description: 'Comma-separated list of poses (e.g. "search_1,search_2,search_3")'
+            },
+            fps: {
+              type: 'number',
+              description: 'Frames per second (default: 2)',
+              default: 2
+            },
+            loop: {
+              type: 'boolean',
+              description: 'Whether to loop the animation (default: false)',
+              default: false
+            }
+          },
+          required: ['sequence']
+        }
+      },
+      {
+        name: 'stop_animation',
+        description: 'Stop any running avatar animation',
+        inputSchema: {
+          type: 'object',
+          properties: {}
+        }
       }
     ]
   };
@@ -413,7 +445,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       
       case 'hide_avatar': {
         try {
-          await axios.post('http://localhost:3338/state', { visible: false });
+          // First stop any animation
+          try {
+            await axios.delete('http://localhost:3338/animate');
+          } catch (e) {
+            // Ignore error if no animation was running
+          }
+          
+          // Then hide the avatar
+          await axios.post('http://localhost:3338/state', { 
+            visible: false
+          });
           
           return {
             content: [{
@@ -433,7 +475,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       
       case 'set_avatar_pose': {
         try {
-          // When setting a pose, also make sure avatar is visible
+          // First stop any running animation
+          try {
+            await axios.delete('http://localhost:3338/animate');
+          } catch (e) {
+            // Ignore error if no animation was running
+          }
+          
+          // Then set the pose
           await axios.post('http://localhost:3338/state', { 
             pose: args.pose,
             visible: true  // Auto-show when changing pose
@@ -458,6 +507,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'move_avatar': {
         try {
           // When moving, also make sure avatar is visible
+          // Note: We don't clear animation here as moving shouldn't stop animations
           await axios.post('http://localhost:3338/state', {
             position: { x: args.x, y: args.y },
             visible: true  // Auto-show when moving
@@ -481,17 +531,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       
       case 'list_avatar_poses': {
         const availablePoses = [
-          { name: 'idle', description: 'Default relaxed state' },
-          { name: 'happy', description: 'Joyful expression' },
-          { name: 'sad', description: 'Sad or sympathetic' },
-          { name: 'thinking', description: 'Deep in thought' },
-          { name: 'talking', description: 'Speaking or communicating' },
-          { name: 'sleeping', description: 'Sleeping or resting' },
-          { name: 'angry', description: 'Frustrated or upset' },
-          { name: 'love', description: 'Affectionate or caring' },
+          { name: 'idle', description: 'Standing politely with serving tray, pleasant smile' },
+          { name: 'happy', description: 'Jumping with arms raised, one leg up, very excited' },
+
+          { name: 'thinking', description: 'Hand on chin, contemplative pose' },
+          { name: 'talking', description: 'Hand extended palm-up, explaining something' },
+          { name: 'sleeping', description: 'Eyes closed with Zzz, leaning on broom' },
+          { name: 'anger', description: 'Hands on hips, stern expression, assertive stance' },
+          { name: 'love', description: 'Heart eyes, hands clasped together, adoring expression' },
           { name: 'pick_up', description: 'Being moved or lifted' },
-          { name: 'write', description: 'Writing or taking notes' },
-          { name: 'master', description: 'Default master pose' }
+          { name: 'write', description: 'Turned away, appears to be writing something' },
+          { name: 'master', description: 'Arms spread wide horizontally, welcoming pose' },
+          { name: 'search_1', description: 'Bending over treasure chest, searching inside' },
+          { name: 'search_2', description: 'Different angle searching in treasure chest' },
+          { name: 'search_3', description: 'Victory pose with golden trophy, sitting on chest' }
         ];
         
         const poseList = availablePoses.map(p => `• ${p.name}: ${p.description}`).join('\n');
@@ -502,6 +555,63 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             text: `Available avatar poses:\n\n${poseList}`
           }]
         };
+      }
+      
+      case 'start_animation': {
+        try {
+          const sequence = args.sequence.split(',').map(s => s.trim());
+          const fps = args.fps || 2;
+          const loop = args.loop || false;
+          
+          // Validate poses exist (basic check)
+          if (sequence.length === 0) {
+            throw new Error('Animation sequence cannot be empty');
+          }
+          
+          // Send animation request to avatar server
+          await axios.post('http://localhost:3338/animate', {
+            sequence: sequence,
+            fps: fps,
+            loop: loop
+          });
+          
+          const duration = sequence.length / fps;
+          
+          return {
+            content: [{
+              type: 'text',
+              text: `Started animation: ${sequence.join(' → ')} at ${fps} FPS${loop ? ' (looping)' : ''}`
+            }]
+          };
+        } catch (error) {
+          return {
+            content: [{
+              type: 'text',
+              text: `Failed to start animation. Make sure avatar system is running. Error: ${error.message}`
+            }]
+          };
+        }
+      }
+      
+      case 'stop_animation': {
+        try {
+          // Send DELETE request to stop animation
+          await axios.delete('http://localhost:3338/animate');
+          
+          return {
+            content: [{
+              type: 'text',
+              text: 'Animation stopped'
+            }]
+          };
+        } catch (error) {
+          return {
+            content: [{
+              type: 'text',
+              text: 'Failed to stop animation. Make sure avatar system is running.'
+            }]
+          };
+        }
       }
       
       default:

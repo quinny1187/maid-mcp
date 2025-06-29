@@ -22,6 +22,8 @@ class AvatarWindow(QWidget):
         self.sprites = {}
         self.dragging = False
         self.drag_position = QPoint()
+        self.mouse_press_pos = None  # Track where mouse was pressed
+        self.has_moved = False  # Track if mouse moved during press
         
         self.init_ui()
         self.load_sprites()
@@ -113,10 +115,48 @@ class AvatarWindow(QWidget):
                 elif not visible and self.isVisible():
                     self.hide()
                 
-                # Update pose
-                new_pose = state.get('pose', 'idle')
-                if new_pose != self.current_pose:
-                    self.set_sprite(new_pose)
+                # Get animation from state
+                animation = state.get('animation')
+                
+                # Handle animation if present
+                if animation is not None and animation and animation.get('sequence'):
+                    # Animation is active
+                    sequence = animation['sequence']
+                    fps = animation['fps']
+                    loop = animation['loop']
+                    
+                    # Initialize start time if not set
+                    if animation.get('start_time') is None:
+                        animation['start_time'] = time.time()
+                    
+                    # Calculate current frame
+                    elapsed = time.time() - animation['start_time']
+                    total_frames = len(sequence)
+                    frame_duration = 1.0 / fps
+                    frame_number = int(elapsed / frame_duration)
+                    
+                    if loop:
+                        # For looping animations, use modulo to wrap around
+                        current_frame_index = frame_number % total_frames
+                        pose = sequence[current_frame_index]
+                        if pose != self.current_pose:
+                            self.set_sprite(pose)
+                    elif frame_number < total_frames:
+                        # For non-looping, show frame if within range
+                        pose = sequence[frame_number]
+                        if pose != self.current_pose:
+                            self.set_sprite(pose)
+                    else:
+                        # Non-looping animation finished, clear it and return to idle
+                        requests.post(f"{self.state_url}/state", 
+                                    json={'animation': None, 'pose': 'idle'},
+                                    timeout=0.1)
+                        self.set_sprite('idle')
+                else:
+                    # No animation or animation cleared, use regular pose
+                    new_pose = state.get('pose', 'idle')
+                    if new_pose != self.current_pose:
+                        self.set_sprite(new_pose)
                 
                 # Update position
                 if 'position' in state:
@@ -132,12 +172,9 @@ class AvatarWindow(QWidget):
     def mousePressEvent(self, event):
         """Handle mouse press - start dragging or check for close"""
         if event.button() == Qt.LeftButton:
-            self.dragging = True
+            self.mouse_press_pos = event.globalPos()
+            self.has_moved = False
             self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
-            
-            # Change to pick_up sprite if available
-            if "pick_up" in self.sprites:
-                self.set_sprite("pick_up")
                 
         elif event.button() == Qt.RightButton:
             # Right-click to hide (not close)
@@ -152,23 +189,49 @@ class AvatarWindow(QWidget):
             
     def mouseMoveEvent(self, event):
         """Handle mouse move - drag window"""
-        if self.dragging and event.buttons() == Qt.LeftButton:
-            self.move(event.globalPos() - self.drag_position)
+        if event.buttons() == Qt.LeftButton and self.mouse_press_pos:
+            # Check if mouse moved significantly (more than 5 pixels)
+            if not self.has_moved:
+                move_distance = (event.globalPos() - self.mouse_press_pos).manhattanLength()
+                if move_distance > 5:
+                    self.has_moved = True
+                    self.dragging = True
+                    # Change to pick_up sprite when starting to drag
+                    if "pick_up" in self.sprites:
+                        self.set_sprite("pick_up")
             
-            # Update position on server
-            try:
-                requests.post(f"{self.state_url}/state", 
-                            json={'position': {'x': self.x(), 'y': self.y()}},
-                            timeout=0.1)
-            except:
-                pass
+            if self.dragging:
+                self.move(event.globalPos() - self.drag_position)
+                
+                # Update position on server
+                try:
+                    requests.post(f"{self.state_url}/state", 
+                                json={'position': {'x': self.x(), 'y': self.y()}},
+                                timeout=0.1)
+                except:
+                    pass
                 
     def mouseReleaseEvent(self, event):
-        """Handle mouse release - stop dragging"""
-        if event.button() == Qt.LeftButton and self.dragging:
-            self.dragging = False
-            # Return to previous sprite by checking server state
-            self.check_state()
+        """Handle mouse release - stop dragging or cancel animation"""
+        if event.button() == Qt.LeftButton:
+            if not self.has_moved and self.mouse_press_pos:
+                # This was a click, not a drag - cancel animation and return to idle
+                try:
+                    requests.post(f"{self.state_url}/state", 
+                                json={'pose': 'idle', 'animation': None},
+                                timeout=0.1)
+                    self.set_sprite('idle')
+                    print("Left-click: Animation cancelled, returning to idle")
+                except:
+                    pass
+            elif self.dragging:
+                # This was a drag - stop dragging and check state
+                self.dragging = False
+                self.check_state()
+            
+            # Reset tracking variables
+            self.mouse_press_pos = None
+            self.has_moved = False
             
     def mouseDoubleClickEvent(self, event):
         """Double-click to close"""
@@ -200,7 +263,7 @@ def main():
     avatar.show()
     
     # Add close instruction tooltip
-    avatar.setToolTip("Right-click to hide | Double-click to close permanently\nDrag to move | ESC to close")
+    avatar.setToolTip("Left-click to cancel animation | Right-click to hide | Double-click to close\nDrag to move | ESC to close")
     
     sys.exit(app.exec_())
 
