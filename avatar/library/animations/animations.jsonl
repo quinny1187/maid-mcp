@@ -15,3 +15,8 @@
 {"id": "mimi_happy_dance", "name": "Mimi's Happy Dance", "frames": ["idle", "happy", "love", "happy", "idle", "happy"], "fps": 4, "loop": false, "builtin": false}
 {"id": "treasure_success", "name": "Treasure Hunt Success!", "frames": ["idle", "talking", "search_1", "search_2", "search_3", "happy"], "fps": 1.5, "loop": false, "builtin": false}
 {"id": "happy_dance_loop", "name": "Happy Dance (Looping)", "frames": ["happy", "idle", "happy", "love"], "fps": 3, "loop": true, "builtin": false}
+{"id":"point_left","name":"Pointing Left - Directing Attention","frames":["point_left"],"fps":1,"loop":false,"builtin":false}
+{"id":"point_right","name":"Pointing Right - Directing Attention","frames":["point_right"],"fps":1,"loop":false,"builtin":false}
+{"id":"point_up","name":"Point Up - Idea or Explanation","frames":["point_up"],"fps":1,"loop":false,"builtin":false}
+{"id":"tour_guide","name":"Tour Guide - Showing Around","frames":["idle","point_up","talking","point_left","point_right","point_up","happy"],"fps":2,"loop":false,"builtin":false}
+{"id":"directions","name":"Giving Directions","frames":["point_left","idle","point_right"],"fps":1.5,"loop":true,"builtin":false}
