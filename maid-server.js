@@ -5,9 +5,14 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
 import { mkdir, writeFile, unlink, rmdir, readFile, appendFile, readdir } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { exec } from 'child_process';
 import axios from 'axios';
+import { fileURLToPath } from 'url';
+
+// Get the directory of this script
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Voice configuration with Japanese accent settings
 const VOICES = {
@@ -34,8 +39,8 @@ const EMOTIONS = {
 // Animation storage
 class AnimationManager {
   constructor() {
-    this.animationsFile = join(process.cwd(), 'avatar', 'library', 'animations', 'animations.jsonl');
-    this.animationsDir = join(process.cwd(), 'avatar', 'library', 'animations');
+    this.animationsFile = join(__dirname, 'avatar', 'library', 'animations', 'animations.jsonl');
+    this.animationsDir = join(__dirname, 'avatar', 'library', 'animations');
     this.animations = new Map();
   }
   
@@ -49,35 +54,49 @@ class AnimationManager {
     try {
       await this.ensureDirectory();
       
+      console.error(`Loading animations from: ${this.animationsFile}`);
+      console.error(`Current directory: ${process.cwd()}`);
+      console.error(`Script directory: ${__dirname}`);
+      
       if (existsSync(this.animationsFile)) {
         const content = await readFile(this.animationsFile, 'utf-8');
         const lines = content.split('\n').filter(line => line.trim());
+        
+        console.error(`Found ${lines.length} animation lines to load`);
         
         for (const line of lines) {
           try {
             const animation = JSON.parse(line);
             this.animations.set(animation.id, animation);
+            console.error(`Loaded animation: ${animation.id}`);
           } catch (e) {
-            console.error('Failed to parse animation line:', line);
+            console.error('Failed to parse animation line:', line, e);
           }
         }
+      } else {
+        console.error('Animations file does not exist yet');
       }
-      console.error(`Loaded ${this.animations.size} animations`);
+      console.error(`Total animations loaded: ${this.animations.size}`);
     } catch (error) {
       console.error('Failed to load animations:', error);
     }
   }
   
   async saveAnimation(animation) {
-    // Ensure directory exists
-    await this.ensureDirectory();
-    
-    // Add to memory
-    this.animations.set(animation.id, animation);
-    
-    // Append to file
-    const line = JSON.stringify(animation) + '\n';
-    await appendFile(this.animationsFile, line);
+    try {
+      // Ensure directory exists
+      await this.ensureDirectory();
+      
+      // Add to memory
+      this.animations.set(animation.id, animation);
+      
+      // Append to file
+      const line = JSON.stringify(animation) + '\n';
+      await appendFile(this.animationsFile, line);
+      console.error(`Saved animation ${animation.id} to file`);
+    } catch (error) {
+      console.error('Failed to save animation:', error);
+    }
   }
   
   getAnimation(id) {
@@ -148,7 +167,7 @@ class VoiceEngine {
     this.tts = new MsEdgeTTS();
     // Default to Japanese voice for Japanese accent
     this.currentVoice = 'ja-JP-NanamiNeural';
-    this.tempDir = join(process.cwd(), 'temp_voice');
+    this.tempDir = join(__dirname, 'temp_voice');
     this.audioQueue = new AudioQueue();
   }
   
@@ -163,11 +182,20 @@ class VoiceEngine {
     if (!VOICES[voiceId]) {
       throw new Error(`Unknown voice: ${voiceId}`);
     }
-    this.currentVoice = voiceId;
-    await this.tts.setMetadata(
-      voiceId,
-      OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3
-    );
+    
+    try {
+      this.currentVoice = voiceId;
+      await this.tts.setMetadata(
+        voiceId,
+        OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3
+      );
+      return true;
+    } catch (error) {
+      // Voice still changes despite the error
+      this.currentVoice = voiceId;
+      console.error('Voice metadata error (voice still changed):', error.message);
+      return true;
+    }
   }
   
   async speak(text, emotion = 'neutral') {
@@ -479,15 +507,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       
       case 'set_voice': {
-        await voiceEngine.setVoice(args.voiceId);
-        const voiceInfo = VOICES[args.voiceId];
-        
-        return {
-          content: [{
-            type: 'text',
-            text: `Voice set to: ${args.voiceId} (${voiceInfo.name}) - ${voiceInfo.language.startsWith('ja-JP') ? 'Japanese accent' : 'Standard'} voice`
-          }]
-        };
+        try {
+          await voiceEngine.setVoice(args.voiceId);
+          const voiceInfo = VOICES[args.voiceId];
+          
+          return {
+            content: [{
+              type: 'text',
+              text: `Voice changed to: ${args.voiceId} (${voiceInfo.name}) - ${voiceInfo.language.startsWith('ja-JP') ? 'Japanese accent' : voiceInfo.language.startsWith('en-GB') ? 'British' : 'American'} voice\n${voiceInfo.style} style with ${voiceInfo.pitch} pitch adjustment`
+            }]
+          };
+        } catch (error) {
+          return {
+            content: [{
+              type: 'text',
+              text: `Failed to set voice: ${error.message}`
+            }]
+          };
+        }
       }
       
       case 'show_avatar': {
@@ -584,7 +621,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           
           // If animation doesn't exist, check if it's a valid pose
           if (!animation) {
-            const libraryPath = join(process.cwd(), 'avatar', 'library');
+            const libraryPath = join(__dirname, 'avatar', 'library');
+            console.error(`Checking for pose ${args.id} in ${libraryPath}`);
             const files = await readdir(libraryPath);
             const poseExists = files.includes(`${args.id}.png`);
             
@@ -618,6 +656,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }]
           };
         } catch (error) {
+          console.error('play_animation error:', error);
           return {
             content: [{
               type: 'text',
@@ -727,7 +766,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       
       case 'list_poses': {
         try {
-          const libraryPath = join(process.cwd(), 'avatar', 'library');
+          const libraryPath = join(__dirname, 'avatar', 'library');
+          console.error(`Listing poses from ${libraryPath}`);
           const files = await readdir(libraryPath);
           const pngFiles = files.filter(f => f.endsWith('.png'));
           const poses = pngFiles.map(f => f.replace('.png', '')).sort();
@@ -745,6 +785,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }]
         };
         } catch (error) {
+          console.error('list_poses error:', error);
           return {
             content: [{
               type: 'text',
@@ -771,6 +812,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 // Start the server
 async function main() {
   try {
+    console.error('Starting maid-mcp server...');
+    console.error(`Working directory: ${process.cwd()}`);
+    console.error(`Script directory: ${__dirname}`);
+    
     await voiceEngine.initialize();
     await animationManager.loadAnimations();
     
