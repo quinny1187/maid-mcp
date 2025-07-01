@@ -10,7 +10,7 @@ A full-featured MCP (Model Context Protocol) server that gives Claude Desktop a 
 - 🎭 **Visual avatar system** - Interactive Mimi sprite with 16+ poses and animations  
 - 🎤 **Speech recognition** - Talk to Mimi naturally with voice input
 - 👻 **Hidden audio playback** - Voice plays without any windows appearing
-- 🎯 **Audio queue system** - Speak multiple times rapidly without conflicts
+- 🎯 **Audio queue system** - Allows Mimi to speak multiple times rapidly without conflicts
 - 🎮 **Interactive controls** - Drag, hide, show, and animate the avatar
 - 🔧 **Full MCP integration** - Voice and avatar tools work seamlessly with Claude Desktop
 
