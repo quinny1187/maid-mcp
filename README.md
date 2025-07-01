@@ -175,7 +175,7 @@ calibrate_voice.bat
 Edit `voice/incoming/voice_config.ini`:
 ```ini
 [recognition]
-energy_threshold = 8000  # Microphone sensitivity
+energy_threshold = 4000  # Microphone sensitivity
 message_cooldown = 3.0   # Seconds between messages
 ```
 
