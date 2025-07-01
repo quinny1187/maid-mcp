@@ -225,15 +225,11 @@ create_animation({
 
 ## Recent Updates
 
-- **v2.1.0** - Enhanced process management and cleanup
-- **v2.0.0** - Modular voice system with speech recognition  
-- **Unified launcher** - Single command starts everything
-- **Voice loop** - Complete bi-directional voice communication
-- **Cleaner structure** - Organized into logical modules
+- **v1.0.0** - Released to the world oh god what I have done. I am so sorry Claude.
 
 ## Credits
 
-- Avatar sprites from screen-avatar project
+- Avatar sprites from chatgpt 4o
 - Voice synthesis using Microsoft Edge TTS
 - Speech recognition via Google Speech API
 
