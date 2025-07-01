@@ -8,7 +8,7 @@ A full-featured MCP (Model Context Protocol) server that gives Claude Desktop a 
 
 - 🎵 **Japanese-accented voice** - Character voice using ja-JP neural voices, its part of her charm the voice is hard to understand. You can also have her change her voice at any time.
 - 🎭 **Visual avatar system** - Interactive Mimi sprite with 16+ poses and animations  
-- 🎤 **Speech recognition** - Talk to Claude naturally with voice input
+- 🎤 **Speech recognition** - Talk to Mimi naturally with voice input
 - 👻 **Hidden audio playback** - Voice plays without any windows appearing
 - 🎯 **Audio queue system** - Speak multiple times rapidly without conflicts
 - 🎮 **Interactive controls** - Drag, hide, show, and animate the avatar
