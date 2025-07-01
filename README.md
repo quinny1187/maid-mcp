@@ -1,6 +1,6 @@
 # Maid-MCP 🎀
 
-A full-featured MCP (Model Context Protocol) server that gives Claude Desktop a maid personality with Japanese-accented voice, visual avatar presence, and speech recognition capabilities.
+A full-featured MCP (Model Context Protocol) server that gives Claude Desktop a maid personality with Japanese-accented voice, visual avatar presence, and speech recognition capabilities. Best used with a Claude Max plan, Opus 4 is very good about managing all the maid tools while coding things for you.
 
 ![Example Image](https://github.com/quinny1187/maid-mcp/blob/main/avatar/library/idle.png)
 
