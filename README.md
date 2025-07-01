@@ -42,11 +42,13 @@ Add to your `%APPDATA%\Claude\claude_desktop_config.json`:
   "mcpServers": {
     "maid": {
       "command": "node",
-      "args": ["C:\\repos\\maid-mcp\\maid-server.js"]
+      "args": ["path/to/maid-mcp/maid-server.js"]
     }
   }
 }
 ```
+
+Replace `path/to/maid-mcp` with the actual path where you cloned this repository.
 
 ### 3. Launch Everything
 
@@ -140,16 +142,6 @@ maid-mcp/
 │
 ├── auto_claude/           # Claude Desktop automation
 │   └── ultra_fast_sender.py  # Message sending
-│
-├── docs/                  # Additional documentation
-│   ├── AUDIO_SOLUTION.md
-│   ├── CLAUDE_CONFIG.md
-│   ├── JAPANESE_ACCENT.md
-│   └── PROCESS_MANAGEMENT_FIX.md
-│
-├── tests/                 # Test scripts
-│   ├── test-simple.js    # Test voice output
-│   └── test-simple.bat   # Run voice test
 │
 ├── temp_voice/           # Temporary audio files
 ├── junk/                 # Archive of old implementations
