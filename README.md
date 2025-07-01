@@ -1,14 +1,15 @@
 # Maid-MCP 🎀
 
-A full-featured MCP (Model Context Protocol) server that gives Claude Desktop a maid personality with Japanese-accented voice and visual avatar presence.
+A full-featured MCP (Model Context Protocol) server that gives Claude Desktop a maid personality with Japanese-accented voice, visual avatar presence, and speech recognition capabilities.
 
 ## Features
 
 - 🎵 **Japanese-accented voice** - Authentic maid character voice using ja-JP neural voices
-- 🎭 **Visual avatar system** - Interactive Mimi sprite with 10 emotional expressions
+- 🎭 **Visual avatar system** - Interactive Mimi sprite with 16+ poses and animations  
+- 🎤 **Speech recognition** - Talk to Claude naturally with voice input
 - 👻 **Hidden audio playback** - Voice plays without any windows appearing
 - 🎯 **Audio queue system** - Speak multiple times rapidly without conflicts
-- 🎮 **Interactive controls** - Drag, hide, show, and position the avatar
+- 🎮 **Interactive controls** - Drag, hide, show, and animate the avatar
 - 🔧 **Full MCP integration** - Voice and avatar tools work seamlessly with Claude Desktop
 
 ## Quick Start
@@ -16,192 +17,231 @@ A full-featured MCP (Model Context Protocol) server that gives Claude Desktop a 
 ### 1. Install Dependencies
 
 ```batch
-# Install Node.js dependencies
-install.bat
+# Install Node.js dependencies (if not already done)
+npm install
 
-# Install Python dependencies for avatar
+# Install Python dependencies for voice input
+cd voice
+install_voice_deps.bat
+cd ..
+
+# Install Python dependencies for avatar (if needed)
 cd avatar
 install_avatar_deps.bat
+cd ..
 ```
 
-### 2. Copy Avatar Sprites
+### 2. Configure Claude Desktop
 
-Manually copy PNG files from `C:\repos\screen-avatar\sprites\` to `avatar\library\`
+Add to your `%APPDATA%\Claude\claude_desktop_config.json`:
 
-### 3. Configure Claude Desktop
+```json
+{
+  "mcpServers": {
+    "maid": {
+      "command": "node",
+      "args": ["C:\\repos\\maid-mcp\\maid-server.js"]
+    }
+  }
+}
+```
+
+### 3. Launch Everything
 
 ```batch
-# Copy the example config
-copy claude_desktop_config.json %APPDATA%\Claude\
+# Recommended: Use Python launcher for best process management
+start_all_python.bat
 
-# Or manually add the maid section to your existing config
-# See docs/CLAUDE_CONFIG.md for details
+# Alternative: Use enhanced batch launcher
+start_all.bat
 ```
 
-### 4. Start Avatar System
+This automatically:
+- ✨ Cleans up any existing processes
+- 👤 Launches avatar display window
+- 🖥️ Starts avatar state server (port 3338)
+- 🎤 Opens voice input listener
+
+### 4. Stop Everything
 
 ```batch
-cd avatar
-start_avatar.bat
+stop_all.bat
 ```
 
-This starts:
-- State server on http://localhost:3338
-- Visual avatar window (Mimi appears on screen)
+## Voice Loop 🎤→💬→🎀→🔊
 
-### 5. Restart Claude Desktop
+1. **You speak** → Microphone picks up voice
+2. **Speech recognition** → Converts to text  
+3. **Ultra fast sender** → Sends to Claude Desktop
+4. **Claude (Mimi) processes** → Understands and responds
+5. **Voice synthesis** → Mimi speaks with Japanese accent
+6. **Avatar reacts** → Visual feedback with animations
 
-The MCP server will load automatically with voice and avatar tools.
+## Available MCP Tools
 
-## Available Tools
+### Voice Tools 🔊
 
-### Voice Tools
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `speak` | Convert text to speech | `text`, `emotion` (optional) |
+| `list_voices` | Get available voices | None |
+| `set_voice` | Change current voice | `voiceId` |
 
-#### speak
-Convert text to speech with optional emotion
-```javascript
-{
-  text: "Hello, Master!",
-  emotion: "happy" // optional: neutral, happy, sad, excited, angry, shy
-}
-```
+**Emotions**: neutral, happy, sad, excited, angry, shy
 
-#### list_voices
-Get list of available voices
+### Avatar Tools 🎭
 
-#### set_voice
-Change the current voice
-```javascript
-{
-  voiceId: "ja-JP-MayuNeural" // or other available voices
-}
-```
-
-### Avatar Tools
-
-#### show_avatar
-Display the avatar on screen
-```javascript
-{
-  pose: "happy",  // optional: initial pose
-  x: 1000,       // optional: X position
-  y: 100         // optional: Y position
-}
-```
-
-#### hide_avatar
-Hide the avatar (keeps running in background)
-
-#### set_avatar_pose
-Change avatar emotional expression
-```javascript
-{
-  pose: "thinking" // idle, happy, sad, thinking, talking, sleeping, angry, love, pick_up, write
-}
-```
-
-#### move_avatar
-Reposition the avatar
-```javascript
-{
-  x: 500,
-  y: 300
-}
-```
-
-#### list_avatar_poses
-List all available avatar poses
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `show_avatar` | Display avatar on screen | `animation`, `x`, `y` (all optional) |
+| `hide_avatar` | Hide avatar (keeps running) | None |
+| `play_animation` | Play animation or pose | `id` |
+| `stop_animation` | Stop current animation | None |
+| `move_avatar` | Reposition avatar | `x`, `y` |
+| `create_animation` | Create custom sequence | `id`, `name`, `frames`, `fps`, `loop` |
+| `list_animations` | List all animations | None |
+| `list_poses` | List available sprites | None |
 
 ## Avatar Interaction
 
-- **Right-click** - Hide avatar (stays running)
-- **Double-click** - Close avatar permanently
-- **Drag** - Move avatar (shows pick_up pose)
-- **ESC key** - Close avatar permanently
-
-## How It Works
-
-### Voice System
-- **msedge-tts** - Microsoft Edge's text-to-speech for neural voices
-- **VBScript** - Hidden audio playback using WMPlayer.OCX
-- **Audio Queue** - Sequential playback prevents file conflicts
-- **Unique filenames** - Each audio gets timestamp-based unique name
-
-### Avatar System
-- **PyQt5** - Transparent, always-on-top window
-- **Flask server** - State coordination between MCP and display
-- **Mimi sprites** - 10 emotional states from screen-avatar project
-- **Auto-show** - Avatar appears when pose/position changes while hidden
+| Action | Result |
+|--------|--------|
+| **Right-click** | Hide avatar (stays running) |
+| **Double-click** | Close avatar permanently |
+| **Left-click** | Cancel animation |
+| **Drag** | Move avatar (shows pick_up pose) |
+| **ESC key** | Close avatar permanently |
 
 ## Project Structure
 
 ```
 maid-mcp/
-├── maid-server.js          # Main MCP server with voice & avatar tools
-├── package.json            # Node dependencies
-├── install.bat             # Install script
-├── claude_desktop_config.json  # Example config
+├── maid-server.js          # Main MCP server
+├── package.json            # Node.js dependencies
+├── start_all_python.bat    # Recommended launcher
+├── start_all.bat           # Alternative launcher
+├── stop_all.bat            # Stop all systems
+│
+├── voice/                  # Voice system module
+│   ├── outgoing/          # Text-to-speech engine
+│   ├── incoming/          # Speech recognition
+│   ├── README.md          # Voice documentation
+│   └── [utility scripts]  # Calibration & setup tools
+│
 ├── avatar/                 # Visual avatar system
-│   ├── avatar_display.py   # PyQt5 avatar window
-│   ├── avatar_state_server.py  # Flask coordination server
-│   ├── start_avatar.bat    # Launch avatar system
-│   ├── library/            # Sprite PNG files
-│   └── README.md           # Avatar documentation
-├── docs/                   # Documentation
-│   ├── AUDIO_SOLUTION.md   # Voice technical details
-│   ├── AUDIO_QUEUE_SYSTEM.md  # Queue implementation
-│   ├── CLAUDE_CONFIG.md    # Setup instructions
-│   └── JAPANESE_ACCENT.md  # Voice configuration
-├── tests/                  # Test files
-│   ├── test-simple.js      # Voice test script
-│   └── test-simple.bat     # Test runner
-├── auto_claude/            # Python automation scripts
-└── temp_voice/             # Temporary audio files
+│   ├── avatar_display.py  # PyQt5 window
+│   ├── avatar_state_server.py  # Coordination server
+│   ├── library/           # Sprite assets
+│   │   ├── *.png         # Sprite images
+│   │   └── animations/   # Animation definitions
+│   └── README.md         # Avatar documentation
+│
+├── auto_claude/           # Claude Desktop automation
+│   └── ultra_fast_sender.py  # Message sending
+│
+├── docs/                  # Additional documentation
+│   ├── AUDIO_SOLUTION.md
+│   ├── CLAUDE_CONFIG.md
+│   ├── JAPANESE_ACCENT.md
+│   └── PROCESS_MANAGEMENT_FIX.md
+│
+├── tests/                 # Test scripts
+│   ├── test-simple.js    # Test voice output
+│   └── test-simple.bat   # Run voice test
+│
+├── temp_voice/           # Temporary audio files
+├── junk/                 # Archive of old implementations
+└── needed_poses.md       # Wishlist for new sprites
 ```
 
-## Technical Details
+## Voice Configuration
 
-### Voice Features
-- Japanese accent using ja-JP-NanamiNeural (+20Hz base pitch)
-- Emotion modulation through pitch/rate/volume adjustments
-- Automatic audio file cleanup after playback
-- Queue system for smooth consecutive speech
+### Adjust Microphone Sensitivity
 
-### Avatar Features
-- 10 sprite states with smooth transitions
-- Persistent between Claude conversations (right-click to hide)
-- Automatic sprite change to "talking" during voice playback
-- Position and state memory
-- No taskbar icon (clean desktop)
+```batch
+cd voice
+adjust_sensitivity.bat
+```
+
+**Recommended sensitivity values**:
+- Very Quiet Room: 1000-2000
+- Normal Room: 2000-4000
+- Office: 4000-6000
+- Noisy: 6000-10000
+
+### Calibrate Microphone
+
+```batch
+cd voice
+calibrate_voice.bat
+```
+
+### Voice Settings
+
+Edit `voice/incoming/voice_config.ini`:
+```ini
+[recognition]
+energy_threshold = 8000  # Microphone sensitivity
+message_cooldown = 3.0   # Seconds between messages
+```
 
 ## Troubleshooting
 
-### Voice Issues
-- If voice crashes with rapid speech, restart Claude Desktop
-- Check `temp_voice/` folder for leftover audio files
+### Voice Input Not Working
+1. Check microphone permissions in Windows
+2. Run calibration to verify microphone levels
+3. Adjust energy_threshold if needed
+4. Ensure Python dependencies are installed
 
-### Avatar Issues
-- If avatar won't appear, check if port 3338 is free
-- If pick_up pose doesn't work, restart avatar display
-- For sprite loading issues, verify PNG files in `avatar/library/`
+### Multiple Avatar Windows
+1. Use `start_all_python.bat` for better process management
+2. Run `stop_all.bat` before starting again
+3. Check Task Manager for lingering Python processes
 
-### General
-- Both systems can run independently
-- State server must be running for avatar tools to work
-- Avatar persists between Claude conversations when hidden
+### Audio Playback Issues
+1. Check `temp_voice/` folder for audio files
+2. Verify Windows Media Player is installed
+3. Restart Claude Desktop if audio queue stuck
 
-## Additional Tools
+### Avatar Not Appearing
+1. Verify port 3338 is free
+2. Check if sprites exist in `avatar/library/`
+3. Look for avatar window behind other windows
 
-The `auto_claude/` folder contains Python scripts for programmatic control:
-- `ultra_fast_sender.py` - Send messages to Claude Desktop
-- `working_event_handler.py` - Event queue system for automation
+## Development Notes
 
-## Development
+### Adding New Voices
+Edit `voice/outgoing/voiceConfig.js` to add more Edge TTS voices
 
-Created by integrating:
-- Voice synthesis from maid personality concept
-- Avatar system from screen-avatar project
-- MCP protocol for Claude Desktop integration
+### Creating New Poses
+1. Add PNG file to `avatar/library/`
+2. Use filename (without .png) as animation ID
+
+### Custom Animations
+```javascript
+// Example: Create a greeting sequence
+create_animation({
+  id: "greeting",
+  name: "Greeting Sequence",
+  frames: "idle,happy,love,idle",
+  fps: 2,
+  loop: false
+})
+```
+
+## Recent Updates
+
+- **v2.1.0** - Enhanced process management and cleanup
+- **v2.0.0** - Modular voice system with speech recognition  
+- **Unified launcher** - Single command starts everything
+- **Voice loop** - Complete bi-directional voice communication
+- **Cleaner structure** - Organized into logical modules
+
+## Credits
+
+- Avatar sprites from screen-avatar project
+- Voice synthesis using Microsoft Edge TTS
+- Speech recognition via Google Speech API
 
 ## License
 

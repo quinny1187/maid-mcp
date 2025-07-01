@@ -1,0 +1,12 @@
+# Speech recognition requirements
+SpeechRecognition==3.10.0
+pyaudio==0.2.13
+numpy==1.24.3
+pocketsphinx==5.0.0  # For offline recognition fallback
+keyboard==0.13.5  # For hotkey support
+
+# For Google Cloud Speech (optional, better accuracy)
+# google-cloud-speech==2.21.0
+
+# For Azure Speech (optional, real-time)
+# azure-cognitiveservices-speech==1.32.1

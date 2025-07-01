@@ -1,12 +1,13 @@
 {
   "name": "maid-mcp",
   "version": "1.0.0",
-  "description": "MCP server for maid assistant with voice and interactive capabilities",
+  "description": "MCP server for maid assistant with modular voice system and interactive capabilities",
   "type": "module",
   "main": "maid-server.js",
   "scripts": {
     "start": "node maid-server.js",
-    "test": "node test-voice.js"
+    "test": "node test-voice.js",
+    "start:all": "start_all.bat"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.6.0",

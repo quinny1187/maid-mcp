@@ -1,40 +1,19 @@
-// maid-mcp server - Voice synthesis with audio queue system
+// maid-mcp server - Lean version with modular voice system
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
-import { mkdir, writeFile, unlink, rmdir, readFile, appendFile, readdir } from 'fs/promises';
+import { readFile, appendFile, readdir, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, dirname } from 'path';
-import { exec } from 'child_process';
 import axios from 'axios';
 import { fileURLToPath } from 'url';
+
+// Import voice system from modular structure
+import { VoiceEngine, VOICES } from './voice/outgoing/index.js';
 
 // Get the directory of this script
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-// Voice configuration with Japanese accent settings
-const VOICES = {
-  // Japanese voices (for authentic Japanese accent)
-  'ja-JP-NanamiNeural': { name: 'Nanami', language: 'ja-JP', style: 'cute', pitch: '+20Hz' },
-  'ja-JP-MayuNeural': { name: 'Mayu', language: 'ja-JP', style: 'gentle', pitch: '+15Hz' },
-  'ja-JP-AoiNeural': { name: 'Aoi', language: 'ja-JP', style: 'energetic', pitch: '+10Hz' },
-  // English voices
-  'en-US-JennyNeural': { name: 'Jenny', language: 'en-US', style: 'cheerful', pitch: '+0Hz' },
-  'en-US-AriaNeural': { name: 'Aria', language: 'en-US', style: 'warm', pitch: '+0Hz' },
-  'en-GB-MaisieNeural': { name: 'Maisie', language: 'en-GB', style: 'young', pitch: '+5Hz' }
-};
-
-// Emotion settings (adjusted for Japanese accent feel)
-const EMOTIONS = {
-  neutral: { pitch: '+0Hz', rate: '+0%', volume: '+0%' },
-  happy: { pitch: '+10Hz', rate: '+5%', volume: '+0%' },
-  sad: { pitch: '-5Hz', rate: '-10%', volume: '-10%' },
-  excited: { pitch: '+15Hz', rate: '+10%', volume: '+5%' },
-  angry: { pitch: '-10Hz', rate: '+5%', volume: '+5%' },
-  shy: { pitch: '+5Hz', rate: '-5%', volume: '-20%' }
-};
 
 // Animation storage
 class AnimationManager {
@@ -55,8 +34,6 @@ class AnimationManager {
       await this.ensureDirectory();
       
       console.error(`Loading animations from: ${this.animationsFile}`);
-      console.error(`Current directory: ${process.cwd()}`);
-      console.error(`Script directory: ${__dirname}`);
       
       if (existsSync(this.animationsFile)) {
         const content = await readFile(this.animationsFile, 'utf-8');
@@ -73,8 +50,6 @@ class AnimationManager {
             console.error('Failed to parse animation line:', line, e);
           }
         }
-      } else {
-        console.error('Animations file does not exist yet');
       }
       console.error(`Total animations loaded: ${this.animations.size}`);
     } catch (error) {
@@ -84,13 +59,8 @@ class AnimationManager {
   
   async saveAnimation(animation) {
     try {
-      // Ensure directory exists
       await this.ensureDirectory();
-      
-      // Add to memory
       this.animations.set(animation.id, animation);
-      
-      // Append to file
       const line = JSON.stringify(animation) + '\n';
       await appendFile(this.animationsFile, line);
       console.error(`Saved animation ${animation.id} to file`);
@@ -108,182 +78,6 @@ class AnimationManager {
   }
 }
 
-// Audio Queue System
-class AudioQueue {
-  constructor() {
-    this.queue = [];
-    this.isPlaying = false;
-  }
-  
-  add(audioPath, vbsPath, audioDir) {
-    this.queue.push({ audioPath, vbsPath, audioDir });
-    if (!this.isPlaying) {
-      this.processQueue();
-    }
-  }
-  
-  async processQueue() {
-    if (this.queue.length === 0) {
-      this.isPlaying = false;
-      return;
-    }
-    
-    this.isPlaying = true;
-    const { audioPath, vbsPath, audioDir } = this.queue.shift();
-    
-    // Execute VBScript and wait for completion
-    exec(`wscript //B "${vbsPath}"`, {
-      windowsHide: true
-    }, async (error) => {
-      if (error) {
-        console.error('Audio playback error:', error.message);
-      }
-      
-      // Clean up files after playback
-      setTimeout(async () => {
-        try {
-          await unlink(vbsPath);
-          await unlink(audioPath);
-          // Remove the audio directory
-          if (audioDir) {
-            await rmdir(audioDir);
-          }
-        } catch (e) {
-          // Ignore cleanup errors
-        }
-      }, 1000);
-      
-      // Process next item in queue
-      setTimeout(() => {
-        this.processQueue();
-      }, 500); // Small gap between audio clips
-    });
-  }
-}
-
-// TTS Engine wrapper with queue
-class VoiceEngine {
-  constructor() {
-    this.tts = new MsEdgeTTS();
-    // Default to Japanese voice for Japanese accent
-    this.currentVoice = 'ja-JP-NanamiNeural';
-    this.tempDir = join(__dirname, 'temp_voice');
-    this.audioQueue = new AudioQueue();
-  }
-  
-  async initialize() {
-    if (!existsSync(this.tempDir)) {
-      await mkdir(this.tempDir, { recursive: true });
-    }
-    await this.setVoice(this.currentVoice);
-  }
-  
-  async setVoice(voiceId) {
-    if (!VOICES[voiceId]) {
-      throw new Error(`Unknown voice: ${voiceId}`);
-    }
-    
-    try {
-      this.currentVoice = voiceId;
-      await this.tts.setMetadata(
-        voiceId,
-        OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3
-      );
-      return true;
-    } catch (error) {
-      // Voice still changes despite the error
-      this.currentVoice = voiceId;
-      console.error('Voice metadata error (voice still changed):', error.message);
-      return true;
-    }
-  }
-  
-  async speak(text, emotion = 'neutral') {
-    try {
-      const emotionSettings = EMOTIONS[emotion] || EMOTIONS.neutral;
-      const voiceConfig = VOICES[this.currentVoice];
-      
-      // Combine base voice pitch with emotion pitch
-      const basePitch = parseInt(voiceConfig.pitch);
-      const emotionPitch = parseInt(emotionSettings.pitch);
-      const combinedPitch = `+${basePitch + emotionPitch}Hz`;
-      
-      // Generate unique filename for this audio
-      const timestamp = Date.now();
-      const randomSuffix = Math.random().toString(36).substring(7);
-      const uniqueId = `${timestamp}_${randomSuffix}`;
-      
-      // Create a subdirectory for this specific audio
-      const audioDir = join(this.tempDir, uniqueId);
-      await mkdir(audioDir, { recursive: true });
-      
-      // Generate audio - msedge-tts will create audio.mp3 in the directory
-      const { audioFilePath } = await this.tts.toFile(
-        audioDir,
-        text,
-        {
-          rate: emotionSettings.rate,
-          pitch: combinedPitch,
-          volume: emotionSettings.volume
-        }
-      );
-      
-      // Create a VBScript that plays audio completely hidden
-      const vbsScript = `
-Set Sound = CreateObject("WMPlayer.OCX.7")
-Sound.URL = "${audioFilePath}"
-Sound.settings.volume = 100
-Sound.settings.setMode "loop", False
-Sound.Controls.play
-While Sound.playState <> 1
-  WScript.Sleep 100
-Wend
-`.trim();
-      
-      // Write VBScript to temp file with unique name
-      const vbsPath = join(this.tempDir, `play_${uniqueId}.vbs`);
-      await writeFile(vbsPath, vbsScript);
-      
-      // Add to queue instead of playing immediately
-      this.audioQueue.add(audioFilePath, vbsPath, audioDir);
-      
-      // Log for debugging
-      console.error(`Queued: ${uniqueId}/audio.mp3 with voice ${this.currentVoice} (${emotion} emotion)`);
-      
-      return { success: true, emotion, voice: this.currentVoice, audioFilePath };
-    } catch (error) {
-      throw error;
-    }
-  }
-  
-  cleanText(text) {
-    // Remove markdown and convert emojis
-    text = text.replace(/[*_`]/g, '');
-    
-    const replacements = {
-      '♡': 'heart',
-      '♥': 'heart',
-      '★': 'star',
-      '☆': 'star',
-      '～': ' ',
-      '〜': ' ',
-      '・': ', ',
-    };
-    
-    for (const [old, replacement] of Object.entries(replacements)) {
-      text = text.replace(new RegExp(old, 'g'), replacement);
-    }
-    
-    text = text.replace(/\s+/g, ' ').trim();
-    
-    if (text.length > 500) {
-      text = text.substring(0, 500) + '...';
-    }
-    
-    return text;
-  }
-}
-
 // Create instances
 const voiceEngine = new VoiceEngine();
 const animationManager = new AnimationManager();
@@ -292,7 +86,7 @@ const animationManager = new AnimationManager();
 const server = new Server(
   {
     name: 'maid-mcp',
-    version: '1.0.0',
+    version: '2.0.0',
   },
   {
     capabilities: {
@@ -305,6 +99,7 @@ const server = new Server(
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
+      // Voice tools
       {
         name: 'speak',
         description: 'Convert text to speech with optional emotion (Japanese accent default)',
@@ -347,6 +142,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['voiceId']
         }
       },
+      // Avatar tools
       {
         name: 'show_avatar',
         description: 'Show the visual avatar on screen',
@@ -477,6 +273,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   
   try {
     switch (name) {
+      // Voice tools
       case 'speak': {
         const text = voiceEngine.cleanText(args.text);
         const emotion = args.emotion || 'neutral';
@@ -492,11 +289,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
       
       case 'list_voices': {
-        const voiceList = Object.entries(VOICES).map(([id, info]) => ({
-          id,
-          ...info,
-          note: info.language.startsWith('ja-JP') ? 'Japanese accent voice' : 'Standard voice'
-        }));
+        const voiceList = voiceEngine.listVoices();
         
         return {
           content: [{
@@ -509,7 +302,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'set_voice': {
         try {
           await voiceEngine.setVoice(args.voiceId);
-          const voiceInfo = VOICES[args.voiceId];
+          const voiceInfo = voiceEngine.getVoiceInfo(args.voiceId);
           
           return {
             content: [{
@@ -527,25 +320,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
       
+      // Avatar tools
       case 'show_avatar': {
         try {
           const animationId = args.animation || 'idle';
           const x = args.x || 1000;
           const y = args.y || 100;
           
-          // Get the animation
           const animation = animationManager.getAnimation(animationId);
           if (!animation) {
             throw new Error(`Unknown animation: ${animationId}`);
           }
           
-          // Show avatar with initial animation
           await axios.post('http://localhost:3338/state', {
             visible: true,
             position: { x, y }
           });
           
-          // Play the animation
           await axios.post('http://localhost:3338/play_animation', {
             id: animationId,
             name: animation.name,
@@ -564,7 +355,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return {
             content: [{
               type: 'text',
-              text: 'Failed to show avatar. Make sure avatar system is running (run avatar/start_avatar.bat)'
+              text: 'Failed to show avatar. Make sure avatar system is running (run start.bat)'
             }]
           };
         }
@@ -619,15 +410,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         try {
           let animation = animationManager.getAnimation(args.id);
           
-          // If animation doesn't exist, check if it's a valid pose
           if (!animation) {
             const libraryPath = join(__dirname, 'avatar', 'library');
-            console.error(`Checking for pose ${args.id} in ${libraryPath}`);
             const files = await readdir(libraryPath);
             const poseExists = files.includes(`${args.id}.png`);
             
             if (poseExists) {
-              // Create a temporary single-frame animation
               animation = {
                 id: args.id,
                 name: args.id.charAt(0).toUpperCase() + args.id.slice(1),
@@ -640,7 +428,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             }
           }
           
-          // Send animation to avatar server
           await axios.post('http://localhost:3338/play_animation', {
             id: animation.id,
             name: animation.name,
@@ -688,13 +475,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       
       case 'create_animation': {
         try {
-          // Parse frames
           const frames = args.frames.split(',').map(f => f.trim());
           if (frames.length === 0) {
             throw new Error('Animation must have at least one frame');
           }
           
-          // Create animation object
           const animation = {
             id: args.id,
             name: args.name,
@@ -704,7 +489,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             builtin: false
           };
           
-          // Save it
           await animationManager.saveAnimation(animation);
           
           return {
@@ -767,7 +551,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case 'list_poses': {
         try {
           const libraryPath = join(__dirname, 'avatar', 'library');
-          console.error(`Listing poses from ${libraryPath}`);
           const files = await readdir(libraryPath);
           const pngFiles = files.filter(f => f.endsWith('.png'));
           const poses = pngFiles.map(f => f.replace('.png', '')).sort();
@@ -812,7 +595,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 // Start the server
 async function main() {
   try {
-    console.error('Starting maid-mcp server...');
+    console.error('Starting maid-mcp server v2.0...');
     console.error(`Working directory: ${process.cwd()}`);
     console.error(`Script directory: ${__dirname}`);
     
