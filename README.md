@@ -2,6 +2,8 @@
 
 A full-featured MCP (Model Context Protocol) server that gives Claude Desktop a maid personality with Japanese-accented voice, visual avatar presence, and speech recognition capabilities.
 
+![Example Image](https://github.com/quinny1187/maid-mcp/blob/main/avatar/library/idle.png)
+
 ## Features
 
 - 🎵 **Japanese-accented voice** - Authentic maid character voice using ja-JP neural voices
