@@ -342,6 +342,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             name: animation.name,
             frames: animation.frames,
             fps: animation.fps,
+            duration_per_pose: animation.duration_per_pose || 2,
             loop: animation.loop
           });
           
@@ -433,6 +434,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             name: animation.name,
             frames: animation.frames,
             fps: animation.fps,
+            duration_per_pose: animation.duration_per_pose || 2,
             loop: animation.loop
           });
           
@@ -484,7 +486,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             id: args.id,
             name: args.name,
             frames: frames,
-            fps: args.fps || 2,
+            fps: args.fps || 2,  // Keep for backwards compatibility
+            duration_per_pose: args.duration || 2,  // New: seconds per pose
             loop: args.loop || false,
             builtin: false
           };
@@ -494,7 +497,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return {
             content: [{
               type: 'text',
-              text: `Created animation: "${animation.name}" (${frames.length} frames at ${animation.fps} FPS)\nID: ${animation.id}`
+              text: `Created animation: "${animation.name}" (${frames.length} poses, ${animation.duration_per_pose}s each)\nTotal duration: ${frames.length * animation.duration_per_pose} seconds\nID: ${animation.id}`
             }]
           };
         } catch (error) {

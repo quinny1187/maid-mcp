@@ -22,7 +22,8 @@ avatar_state = {
     'pose': 'idle',
     'position': {'x': 1000, 'y': 100},
     'last_update': None,
-    'animation': None  # Animation data
+    'animation': None,  # Animation data
+    'gif': None  # GIF data
 }
 
 @app.route('/state', methods=['GET'])
@@ -75,7 +76,9 @@ def play_animation():
             'id': data.get('id'),
             'name': data.get('name'),
             'sequence': data.get('frames', []),
-            'fps': data.get('fps', 2),
+            'frames': data.get('frames', []),  # Include both for compatibility
+            'fps': data.get('fps', 2),  # Keep for backwards compatibility
+            'duration_per_pose': data.get('duration_per_pose', 2.0),  # New: seconds per pose
             'loop': data.get('loop', False),
             'current_frame': 0,
             'start_time': time.time()
@@ -101,6 +104,41 @@ def stop_animation():
     
     return jsonify({'status': 'ok'})
 
+@app.route('/show_gif', methods=['POST'])
+def show_gif():
+    """Show a GIF in the avatar window"""
+    global avatar_state
+    
+    data = request.get_json()
+    if data and 'url' in data:
+        # Store GIF data
+        avatar_state['gif'] = {
+            'url': data.get('url'),
+            'duration': data.get('duration', 5),  # Default 5 seconds
+            'start_time': time.time()
+        }
+        
+        # Hide the current avatar sprite
+        avatar_state['animation'] = None
+        avatar_state['pose'] = None
+        avatar_state['visible'] = True
+        
+        print(f"Showing GIF: {data.get('url')}")
+    
+    return jsonify({'status': 'ok'})
+
+@app.route('/hide_gif', methods=['POST'])
+def hide_gif():
+    """Hide the GIF and restore avatar"""
+    global avatar_state
+    
+    avatar_state['gif'] = None
+    avatar_state['pose'] = 'idle'
+    
+    print("GIF hidden, avatar restored")
+    
+    return jsonify({'status': 'ok'})
+
 if __name__ == '__main__':
     print("Avatar State Server running on http://localhost:3338")
     print("Endpoints:")
@@ -109,4 +147,6 @@ if __name__ == '__main__':
     print("  GET  /health - Health check")
     print("  POST /play_animation - Play animation")
     print("  DELETE /animate - Stop animation")
+    print("  POST /show_gif - Show a GIF")
+    print("  POST /hide_gif - Hide GIF and restore avatar")
     app.run(host='0.0.0.0', port=3338, debug=False)

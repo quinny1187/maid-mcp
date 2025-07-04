@@ -20,3 +20,10 @@
 {"id":"point_up","name":"Point Up - Idea or Explanation","frames":["point_up"],"fps":1,"loop":false,"builtin":false}
 {"id":"tour_guide","name":"Tour Guide - Showing Around","frames":["idle","point_up","talking","point_left","point_right","point_up","happy"],"fps":2,"loop":false,"builtin":false}
 {"id":"directions","name":"Giving Directions","frames":["point_left","idle","point_right"],"fps":1.5,"loop":true,"builtin":false}
+{"id":"quick_celebration","name":"Quick Celebration","frames":["happy","idle","happy","idle","happy"],"fps":3,"loop":false,"builtin":false}
+{"id":"shy_gesture","name":"Shy Gesture","frames":["thinking","idle","thinking","idle"],"fps":2,"loop":false,"builtin":false}
+{"id":"wait_moment","name":"Wait a Moment","frames":["idle","idle","idle","idle"],"fps":2,"loop":false,"builtin":false}
+{"id":"wait_8_seconds","name":"Wait 8 Seconds","frames":["idle","idle","idle","idle","idle","idle","idle","idle"],"fps":1,"loop":false,"builtin":false}
+{"id":"celebration_dance","name":"Celebration Dance","frames":["happy","search_3","happy","search_3","happy","idle"],"fps":4,"loop":false,"builtin":false}
+{"id":"shy_love","name":"Shy Love Expression","frames":["love","idle","love","idle","love","thinking","idle"],"fps":3,"loop":false,"builtin":false}
+{"id":"ultimate_showcase","name":"Ultimate Pose Showcase","frames":["idle","point_left","point_right","point_up","happy","search_3","master","love"],"fps":4,"loop":false,"builtin":false}
