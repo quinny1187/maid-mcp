@@ -1,16 +1,16 @@
 # Maid-MCP 🎀
 
-A full-featured MCP (Model Context Protocol) server that gives Claude Desktop a maid personality with Japanese-accented voice, visual avatar presence, and speech recognition capabilities. Best used with a Claude Max plan, Opus 4 is very good about managing all the maid tools while coding things for you. This project is specifically meant to be for fun, not for productivity. There are already a million productivity mcp servers.
+A full-featured MCP (Model Context Protocol) server that gives Claude Desktop a maid personality codenamed Mimi with Japanese-accented voice, visual avatar presence, and speech recognition capabilities. Best used with a Claude Max plan, Opus 4 is very good about managing all the maid tools while coding things for you. This project is specifically meant to be for fun, not for productivity. There are already a million productivity mcp servers.
 
 ![Example Image](https://github.com/quinny1187/maid-mcp/blob/main/avatar/library/idle.png)
 
 ## Features
 
-- 🎵 **Japanese-accented voice** - Authentic maid character voice using ja-JP neural voices
+- 🎵 **Japanese-accented voice** - Character voice using ja-JP neural voices, its part of her charm the voice is hard to understand. You can also have her change her voice at any time.
 - 🎭 **Visual avatar system** - Interactive Mimi sprite with 16+ poses and animations  
-- 🎤 **Speech recognition** - Talk to Claude naturally with voice input
+- 🎤 **Speech recognition** - Talk to Mimi naturally with voice input
 - 👻 **Hidden audio playback** - Voice plays without any windows appearing
-- 🎯 **Audio queue system** - Speak multiple times rapidly without conflicts
+- 🎯 **Audio queue system** - Allows Mimi to speak multiple times rapidly without conflicts
 - 🎮 **Interactive controls** - Drag, hide, show, and animate the avatar
 - 🔧 **Full MCP integration** - Voice and avatar tools work seamlessly with Claude Desktop
 
@@ -175,7 +175,7 @@ calibrate_voice.bat
 Edit `voice/incoming/voice_config.ini`:
 ```ini
 [recognition]
-energy_threshold = 8000  # Microphone sensitivity
+energy_threshold = 4000  # Microphone sensitivity
 message_cooldown = 3.0   # Seconds between messages
 ```
 
@@ -225,15 +225,11 @@ create_animation({
 
 ## Recent Updates
 
-- **v2.1.0** - Enhanced process management and cleanup
-- **v2.0.0** - Modular voice system with speech recognition  
-- **Unified launcher** - Single command starts everything
-- **Voice loop** - Complete bi-directional voice communication
-- **Cleaner structure** - Organized into logical modules
+- **v1.0.0** - Released to the world oh god what I have done. I am so sorry Claude.
 
 ## Credits
 
-- Avatar sprites from screen-avatar project
+- Avatar sprites from chatgpt 4o
 - Voice synthesis using Microsoft Edge TTS
 - Speech recognition via Google Speech API
 
